@@ -1,9 +1,10 @@
 from contrast.environment import env, macro, MacroSyntaxError
 from contrast.scans import SoftwareScan
 from contrast.detectors import Detector
-from contrast.recorders import active_recorders
+from contrast.recorders import active_recorders, RecorderHeader, RecorderFooter
 import numpy as np
 import time
+from collections import OrderedDict
 
 
 @macro
@@ -33,6 +34,7 @@ class Stxm(SoftwareScan):
          self.exptime, self.latency) = args
 
         # make sure the fast motor has a velocity or proxy.velocity attribute
+        ok = False
         if hasattr(self.fast_motor, 'velocity'):
             ok = True
             self.proxy_attr = False
@@ -110,18 +112,32 @@ class Stxm(SoftwareScan):
                 for d in self.group:
                     dct[d.name] = d.read()
                 dct['dt'] = dt
+                ## weird that this [:N] indexing is needed, something wrong with panda scheme?
+                dct['panda'] = {'x': panda.XPosOut[:self.fast_ints].reshape(1, -1),
+                                'y': panda.YPosOut[:self.fast_ints].reshape(1, -1),
+                                'PMT': panda.PMTOut[:self.fast_ints].reshape(1, -1),
+                                'diode': panda.PDiodeOut[:self.fast_ints].reshape(1, -1)}
 
                 # pass data to recorders
                 for r in active_recorders():
                     r.queue.put(dct)
 
                 # print spec-style info
-                self.output(i, dct.copy())
+                self.output(y_i, dct.copy())
 
             print('\nScan #%d ending at %s' % (self.scannr, time.asctime()))
-                
+
         except KeyboardInterrupt:
+            for r in active_recorders():
+                r.queue.put(RecorderFooter(scannr=self.scannr,
+                                           status='cancelled',
+                                           path=env.paths.directory))
             return
+
+        for r in active_recorders():
+            r.queue.put(RecorderFooter(scannr=self.scannr,
+                                       status='finished',
+                                       path=env.paths.directory))
 
     def _setup(self):
         # find and prepare the detectors
@@ -155,15 +171,12 @@ class Stxm(SoftwareScan):
         # go to the starting position
         self._set_vel(self.FAST)
         self.fast_motor.move(start - self.MARGIN)
-        print('Going to X = %f ' % (start - self.MARGIN))
         while self.fast_motor.busy():
             time.sleep(self.SLEEP)
-        print('...there!')
 
         # do a controlled movement
         vel = (abs(start - end)) / (N * (exptime + latency))
         self._set_vel(vel)
-        print('Scanning at velocity %e' % vel)
         self.fast_motor.move(end)
 
     def _while_acquiring(self):
@@ -171,7 +184,14 @@ class Stxm(SoftwareScan):
 
 
 class DummyPanda(object):
-    PointNOut = range(100000)
+
+    dum = np.arange(10000, dtype=np.uint8)
+    PointNOut = dum
+    XPosOut = dum
+    YPosOut = dum
+    PMTOut = dum
+    PDiodeOut = dum
+
     def ArmSingle(self):
         pass
 
