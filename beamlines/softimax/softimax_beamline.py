@@ -22,7 +22,7 @@ if __name__ == '__main__':
 
     from contrast.motors import DummyMotor
     from contrast.motors.SoftiPiezoShutter import SoftiPiezoShutter
-    from contrast.motors.SoftiPolarizationCtrl import SoftiPolarizationCtrl
+    # from contrast.motors.SoftiPolarizationCtrl import SoftiPolarizationCtrl
     from contrast.detectors import DummyDetector
     from contrast.motors.TangoAttributeMotor import TangoAttributeMotor
 
@@ -41,14 +41,14 @@ if __name__ == '__main__':
     # the available values are : horizontal, circularpositive, circularnegative
     # pol_ctrl = tango.DeviceProxy('B318A/CTL/ID-ENERGY-CTRL')
     # pol_ctrl = TangoAttributeMotor(name='pol_ctrl', device='B318A/CTL/ID-ENERGY-CTRL', attribute='polarizationmode')
-    pol_ctrl = SoftiPolarizationCtrl(name='pol_ctrl', device='B318A/CTL/ID-ENERGY-CTRL')
+    # pol_ctrl = SoftiPolarizationCtrl(name='pol_ctrl', device='B318A/CTL/ID-ENERGY-CTRL')
 
     # motors
     # finex = TangoMotor(device='PiezoPiE712/CTL/X', name='finex', user_format='%.3f', dial_format='%.3f', dial_limits=(0, 100), offset=50, scaling=-1)
     # finey = TangoMotor(device='PiezoPiE712/CTL/Y', name='finey', user_format='%.3f', dial_format='%.3f', dial_limits=(0, 100), offset=50, scaling=-1)
 
-    # finex = TangoMotor(device='B318A-EA01/CTL/PI_X', name='finex', user_format='%.3f', dial_format='%.3f', dial_limits=(-50, 50), offset=0, scaling=1)
-    # finey = TangoMotor(device='B318A-EA01/CTL/PI_Y', name='finey', user_format='%.3f', dial_format='%.3f', dial_limits=(-50, 50), offset=0, scaling=1)
+    finex = TangoMotor(device='B318A-EA01/CTL/PI_X', name='finex', user_format='%.3f', dial_format='%.3f', dial_limits=(-50, 50), offset=0, scaling=1)
+    finey = TangoMotor(device='B318A-EA01/CTL/PI_Y', name='finey', user_format='%.3f', dial_format='%.3f', dial_limits=(-50, 50), offset=0, scaling=1)
 
     osax = TangoMotor(device='motor/osa_ctrl/1', name='osax', user_format='%.3f', dial_format='%.3f', offset=0.83)
     osay = TangoMotor(device='motor/osa_ctrl/2', name='osay', user_format='%.3f', dial_format='%.3f', offset=0.32)
@@ -61,12 +61,12 @@ if __name__ == '__main__':
     zp_mot = TangoMotor(device='B318A-EA01/CTL/SoftiZPEnergy', name='zp', user_format='%.3f', dial_format='%.3f', dial_limits=(-1300, -15000))
     zp_E_mot = TangoAttributeMotor(name='zp_E_mot', device='B318A-EA01/CTL/SoftiZPEnergy', attribute='Energy')
     
-    finex = TangoMotor(device='B318A/CTL/DUMMY-01', name='finex', user_format='%.3f', dial_format='%.3f', dial_limits=(0, 100))
-    finey = TangoMotor(device='B318A/CTL/DUMMY-02', name='finey', user_format='%.3f', dial_format='%.3f', dial_limits=(0, 100))
+    # finex = TangoMotor(device='B318A/CTL/DUMMY-01', name='finex', user_format='%.3f', dial_format='%.3f', dial_limits=(0, 100))
+    # finey = TangoMotor(device='B318A/CTL/DUMMY-02', name='finey', user_format='%.3f', dial_format='%.3f', dial_limits=(0, 100))
  
     # cameras
     andor = DhyanaAndor(device='B318A-EA01/dia/andor-zyla-01', name='andor', hdf_name='zyla')
-    dhyana = DhyanaAndor(name='dhyana', hdf_name='dhyana', device='b318a-ea01/dia/dhyana')
+    # dhyana = DhyanaAndor(name='dhyana', hdf_name='dhyana', device='b318a-ea01/dia/dhyana')
 
     # other detectors    
     abs_x = TangoAttributeDetector('abs_x', 'B318A-EA01/CTL/PandaPosTrig', 'AbsX')
@@ -101,6 +101,6 @@ if __name__ == '__main__':
     except Exception as e:
         print(e)
 
-    print('\n\nThe current polarization mode is: ', pol_ctrl.get_polarization())
+    # print('\n\nThe current polarization mode is: ', pol_ctrl.get_polarization())
     print('The beamline energy is: ', tango.DeviceProxy('B318A/CTL/BEAMLINE-ENERGY').Position)
 
