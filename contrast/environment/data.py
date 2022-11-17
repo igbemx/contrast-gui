@@ -25,7 +25,7 @@ class SdmPathFixer(object):
     def directory(self):
         for trial in range(self.TRIALS):
             try:
-                val = self.device.SamplePath
+                val = self.device.Path
                 self.cache = val
                 return val
             except (DevFailed, CommunicationFailed):
