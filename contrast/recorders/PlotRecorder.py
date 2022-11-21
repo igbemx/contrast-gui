@@ -190,6 +190,9 @@ class PlotRecorderMesh(Recorder):
         # Extracting range/interval values from the mesh scan description
         self.desc = dct['description'].split()
         self.xdata_param, self.ydata_param = self.desc[2:5], self.desc[6:9]
+        # print(f'dct: {dct}')
+        # print(f'self.desc: {self.desc}')
+        # print(f'self.xdata_param: {self.xdata_param}, self.ydata_param: {self.ydata_param}')
 
         # Some values for convenience
         padding_k = 0.05 # Padding coefficient equals 5%
@@ -246,7 +249,7 @@ class PlotRecorderMesh(Recorder):
         if not isinstance(new_data, dict):
             new_data = {'': new_data}
 
-        self._x, self._y, self._z = self._get_new_point(dct)
+        self._x, self._y, self._z = self._get_new_point(dct, self.xdata, self.ydata)
 
         if self.point_N < self.matrix_size:
             self.X.append(float(self._x))

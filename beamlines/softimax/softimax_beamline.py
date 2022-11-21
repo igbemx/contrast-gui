@@ -50,6 +50,9 @@ if __name__ == '__main__':
     finex = TangoMotor(device='B318A-EA01/CTL/PI_X', name='finex', user_format='%.3f', dial_format='%.3f', dial_limits=(-50, 50), offset=0, scaling=1)
     finey = TangoMotor(device='B318A-EA01/CTL/PI_Y', name='finey', user_format='%.3f', dial_format='%.3f', dial_limits=(-50, 50), offset=0, scaling=1)
 
+    coarse_x = TangoMotor(device='B318A-EA01/dia/SAMS-01-X', name='coarse_x', user_format='%.3f', dial_format='%.3f', dial_limits=(-5000, 5000), offset=7399.85, scaling=1000)
+    coarse_y = TangoMotor(device='B318A-EA01/dia/SAMS-01-Y', name='coarse_y', user_format='%.3f', dial_format='%.3f', dial_limits=(-4000, 4000), offset=4798, scaling=1000)
+
     osax = TangoMotor(device='motor/osa_ctrl/1', name='osax', user_format='%.3f', dial_format='%.3f', offset=0.83)
     osay = TangoMotor(device='motor/osa_ctrl/2', name='osay', user_format='%.3f', dial_format='%.3f', offset=0.32)
     beamline_energy = TangoMotor(device='B318A/CTL/BEAMLINE-ENERGY', name='beamline_energy', user_format='%.3f', dial_format='%.3f', dial_limits=(275, 1600))
@@ -59,7 +62,7 @@ if __name__ == '__main__':
 
     zp = tango.DeviceProxy('B318A-EA01/CTL/SoftiZPEnergy')
     zp_mot = TangoMotor(device='B318A-EA01/CTL/SoftiZPEnergy', name='zp', user_format='%.3f', dial_format='%.3f', dial_limits=(-1300, -15000))
-    zp_E_mot = TangoAttributeMotor(name='zp_E_mot', device='B318A-EA01/CTL/SoftiZPEnergy', attribute='Energy')
+    zp_Energy = TangoAttributeMotor(name='zp_E_mot', device='B318A-EA01/CTL/SoftiZPEnergy', attribute='Energy')
     
     # finex = TangoMotor(device='B318A/CTL/DUMMY-01', name='finex', user_format='%.3f', dial_format='%.3f', dial_limits=(0, 100))
     # finey = TangoMotor(device='B318A/CTL/DUMMY-02', name='finey', user_format='%.3f', dial_format='%.3f', dial_limits=(0, 100))
