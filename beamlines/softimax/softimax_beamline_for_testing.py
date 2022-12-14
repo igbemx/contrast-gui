@@ -46,6 +46,9 @@ if __name__ == '__main__':
     # finex = TangoMotor(device='PiezoPiE712/CTL/X', name='finex', user_format='%.3f', dial_format='%.3f', dial_limits=(0, 100), offset=50, scaling=-1)
     # finey = TangoMotor(device='PiezoPiE712/CTL/Y', name='finey', user_format='%.3f', dial_format='%.3f', dial_limits=(0, 100), offset=50, scaling=-1)
 
+    # dummy_x = TangoMotor(device='B318A/CTL/DUMMY-01', name='dummy_x', user_format='%.3f', dial_format='%.3f', dial_limits=(0, 100), offset=50, scaling=-1)
+    # dummy_y = TangoMotor(device='B318A/CTL/DUMMY-02', name='dummy_y', user_format='%.3f', dial_format='%.3f', dial_limits=(0, 100), offset=50, scaling=-1)
+
     finex = TangoMotor(device='B318A-EA01/CTL/PI_X', name='finex', user_format='%.3f', dial_format='%.3f', dial_limits=(-50, 50), offset=0, scaling=1)
     finey = TangoMotor(device='B318A-EA01/CTL/PI_Y', name='finey', user_format='%.3f', dial_format='%.3f', dial_limits=(-50, 50), offset=0, scaling=1)
 
@@ -67,18 +70,23 @@ if __name__ == '__main__':
     # finey = TangoMotor(device='B318A/CTL/DUMMY-02', name='finey', user_format='%.3f', dial_format='%.3f', dial_limits=(0, 100))
  
     # cameras
-    andor = DhyanaAndor(device='B318A-EA01/dia/andor-zyla-01', name='andor', hdf_name='zyla')
+    # andor = DhyanaAndor(device='B318A-EA01/dia/andor-zyla-01', name='andor', hdf_name='zyla')
     # dhyana = DhyanaAndor(name='dhyana', hdf_name='dhyana', device='b318a-ea01/dia/dhyana')
 
     # other detectors    
     abs_x = TangoAttributeDetector('abs_x', 'B318A-EA01/CTL/PandaPosTrig', 'AbsX')
     abs_y = TangoAttributeDetector('abs_y', 'B318A-EA01/CTL/PandaPosTrig', 'AbsY')
+
+    # positions for fast axis triggering
+    trig_x_pos = TangoAttributeMotor(name='trig_x_pos', device='B318A-EA01/CTL/PandaPosTrig', attribute='TrigXPos')
+    trig_y_pos = TangoAttributeMotor(name='trig_y_pos', device='B318A-EA01/CTL/PandaPosTrig', attribute='TrigYPos')
+    
     roi = TangoAttributeDetector('roi', 'B318A-EA01/dia/andor-requests', 'data_mean')
     
      # default detector selection
     for d in Detector.getinstances():
         d.active = False
-    for d in [andor, roi, abs_x, abs_y]:
+    for d in [abs_x, abs_y]:
         d.active = True
 
     def pre_scan_stuff(slf):
