@@ -78,7 +78,7 @@ if __name__ == '__main__':
      # default detector selection
     for d in Detector.getinstances():
         d.active = False
-    for d in [andor, roi, abs_x, abs_y]:
+    for d in [roi, abs_x, abs_y]:
         d.active = True
 
     def pre_scan_stuff(slf):
