@@ -1,5 +1,6 @@
 from contrast.environment import macro
 from contrast.motors.Motor import expect_motors
+from contrast.environment import env
 
 import sys
 import time
@@ -183,6 +184,10 @@ class MotPosWid(object):
         
         ipython = get_ipython()
         ipython.magic('gui qt5')
+
+        if not hasattr(env, 'widgets'):
+            env.widgets = []
+        env.widgets.append(self)
         
         self.app = pg.mkQApp("Plotting motor positions")
         if self.app is None:

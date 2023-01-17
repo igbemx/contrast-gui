@@ -8,6 +8,7 @@ from ..utils import SpecTable
 from collections import OrderedDict
 import sys
 
+from PyQt5.QtCore import QObject, QCoreApplication, Signal, Slot
 
 class SoftwareScan(object):
     """
@@ -228,6 +229,119 @@ class SoftwareScan(object):
         """
         raise NotImplementedError
 
+class QSoftwareScan(SoftwareScan, QObject):
+    """ Base class for the qt involved scans"""
+    
+    scan_started = Signal(int)
+    scan_finished = Signal(int)
+    scan_data = Signal(OrderedDict)
+
+    def __init__(self, *args, **kwargs):
+        # super(QSoftwareScan, self).__init__(*args, **kwargs)
+        SoftwareScan.__init__(self, *args, **kwargs)
+        QObject.__init__(self)
+
+    def run(self):
+        """
+        This is the main acquisition loop where interaction with motors,
+        detectors and other ``Gadget`` objects happens.
+        """
+        self._before_scan()
+        print('\nScan #%d starting at %s' % (self.scannr, time.asctime()))
+        positions = self._generate_positions()
+        # find and prepare the detectors
+        det_group = Detector.get_active()
+        trg_group = TriggerSource.get_active()
+        group = det_group + trg_group
+        if group.busy():
+            print('These gadgets are busy: %s'
+                  % (', '.join([d.name for d in group if d.busy()])))
+            return
+        group.prepare(self.exposuretime, self.scannr, self.n_positions,
+                      trials=10)
+        t0 = time.time()
+        # send a header to the recorders
+        snap = env.snapshot.capture()
+        for r in active_recorders():
+            r.queue.put(RecorderHeader(scannr=self.scannr,
+                                       status='started',
+                                       path=env.paths.directory,
+                                       snapshot=snap,
+                                       description=self._command))
+        # emit the qt start signal
+        self.scan_started.emit(self.scannr)
+        
+        try:
+            for i, pos in enumerate(positions):
+                # move motors
+                self._before_move()
+                for m in self.motors:
+                    m.move(pos[m.name])
+                while True in [m.busy() for m in self.motors]:
+                    time.sleep(.01)
+                    QCoreApplication.processEvents()
+                # arm detectors
+                self._before_arm()
+                group.arm()
+                # start detectors
+                self._before_start()
+                group.start(trials=10)
+                while det_group.busy():
+                    self._while_acquiring()
+                    time.sleep(.01)
+                    QCoreApplication.processEvents()
+                # read detectors and motors
+                dt = time.time() - t0
+                dct = OrderedDict()
+                for m in self.motors:
+                    dct[m.name] = m.position()
+                    QCoreApplication.processEvents()
+                for d in det_group:
+                    dct[d.name] = d.read()
+                    QCoreApplication.processEvents()
+                dct['dt'] = dt
+                
+                # send data as a signal
+                self.scan_data.emit(dct)
+                
+                # pass data to recorders
+                for r in active_recorders():
+                    r.queue.put(dct)
+                    QCoreApplication.processEvents()
+                # print spec-style info
+                self.output(i, dct.copy())
+            print('\nScan #%d ending at %s' % (self.scannr, time.asctime()))
+
+            # tell the recorders that the scan is over
+            for r in active_recorders():
+                QCoreApplication.processEvents()
+                r.queue.put(RecorderFooter(scannr=self.scannr,
+                                           status='finished',
+                                           path=env.paths.directory,
+                                           snapshot=snap,
+                                           description=self._command))
+
+        except KeyboardInterrupt:
+            group.stop()
+            print('\nScan #%d cancelled at %s' % (self.scannr, time.asctime()))
+
+            # emit the qt finished signal
+            self.scan_finished.emit(self.scannr)
+
+            # tell the recorders that the scan was interrupted
+            for r in active_recorders():
+                QCoreApplication.processEvents()
+                r.queue.put(RecorderFooter(scannr=self.scannr,
+                                           status='interrupted',
+                                           path=env.paths.directory,
+                                           snapshot=snap,
+                                           description=self._command))
+        except:
+            self._after_scan()
+            raise
+
+        # do any user-defined cleanup actions
+        self._after_scan()
 
 @macro
 class LoopScan(SoftwareScan):

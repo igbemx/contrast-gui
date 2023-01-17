@@ -1,4 +1,4 @@
-from .Scan import SoftwareScan
+from .Scan import SoftwareScan, QSoftwareScan
 from ..environment import macro, MacroSyntaxError
 from ..motors import all_are_motors
 import numpy as np

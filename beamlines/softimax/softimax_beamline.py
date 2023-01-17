@@ -18,6 +18,7 @@ if __name__ == '__main__':
     from contrast.detectors.TangoAttributeDetector import TangoAttributeDetector
     from contrast.detectors.DhyanaAndor import DhyanaAndor
     from contrast.scans import SoftwareScan, Ct
+    import contrast.widgets
 
     from contrast.motors import DummyMotor
     from contrast.motors.SoftiPiezoShutter import SoftiPiezoShutter
