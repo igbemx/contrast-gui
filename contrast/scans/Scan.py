@@ -8,7 +8,7 @@ from ..utils import SpecTable
 from collections import OrderedDict
 import sys
 
-from PyQt5.QtCore import QObject, QCoreApplication, Signal, Slot
+from PyQt5.QtCore import QObject, QCoreApplication, pyqtSignal, pyqtSlot
 
 class SoftwareScan(object):
     """
@@ -232,16 +232,16 @@ class SoftwareScan(object):
 class QSoftwareScan(SoftwareScan, QObject):
     """ Base class for the qt involved scans"""
     
-    scan_started = Signal(int)
-    scan_finished = Signal(int)
-    scan_data = Signal(OrderedDict)
+    scan_started = pyqtSignal(int)
+    scan_finished = pyqtSignal(int)
+    scan_data = pyqtSignal(OrderedDict)
 
     def __init__(self, *args, **kwargs):
         # super(QSoftwareScan, self).__init__(*args, **kwargs)
         SoftwareScan.__init__(self, *args, **kwargs)
         QObject.__init__(self)
 
-    def run(self):
+    def scan_run(self):
         """
         This is the main acquisition loop where interaction with motors,
         detectors and other ``Gadget`` objects happens.

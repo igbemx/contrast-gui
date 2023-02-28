@@ -9,7 +9,7 @@ from multiprocessing import get_context
 # and ipython somehow. On the other hand, 'spawn' is more sensitive
 # than 'fork' so you have to be careful only to call Recorder.start()
 # from main, see the example scripts.
-ctx = get_context('spawn')
+ctx = get_context('fork')
 Queue = ctx.Queue
 
 
