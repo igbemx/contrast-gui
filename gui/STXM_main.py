@@ -12,7 +12,7 @@ import pyqtgraph as pg
 import pyqtgraph.parametertree as pt
 
 from softimax_beamline import *
-from macros import LineScan, QAScan, QMesh
+from macros import LineScan, QAScan, QMesh, QMesh_fly
 from contrast.motors import Motor
 from contrast.detectors.TangoAttributeDetector import TangoAttributeDetector
 from contrast.recorders import RecorderHeader, RecorderFooter
@@ -112,6 +112,7 @@ class ContrastGUIMainWindow(QtWidgets.QDialog):
         self._populate_ms_slow_mot_combo()
         self._populate_ms_hor_axis_combo()
         self._populate_ms_vert_axis_combo()
+        self._populate_ms_flytrig_axis_combo()
         
         self.ls_mot_sel_combo.currentTextChanged.connect(self._select_ls_mot_combo)
         self.ls_det_sel_combo.currentTextChanged.connect(self._select_ls_det_combo)
@@ -143,6 +144,7 @@ class ContrastGUIMainWindow(QtWidgets.QDialog):
         
         self.ms_slow_start_edit.setValidator(QDoubleValidator())
         self.ms_slow_stop_edit.setValidator(QDoubleValidator())
+        self.ms_flylatency_edit.setValidator(QDoubleValidator())
         self.ms_slow_points_n_edit.setValidator(QIntValidator())
         
         # Setting up Line Scan tab
@@ -206,11 +208,10 @@ class ContrastGUIMainWindow(QtWidgets.QDialog):
         
         # Macro related things
         self.ls_macro_start_btn.clicked.connect(self._ls_macro_start_btn)
-        self.ls_macro_cancel_btn.clicked.connect(self._ls_macro_cancel_btn)
-        self.ms_macro_cancel_btn.clicked.connect(self._ls_macro_cancel_btn)
+        self.ls_macro_cancel_btn.clicked.connect(self._macro_cancel_btn)
+        self.ms_macro_cancel_btn.clicked.connect(self._macro_cancel_btn)
         
         self.ms_macro_start_btn.clicked.connect(self._ms_macro_start_btn)
-        self.ms_macro_cancel_btn.clicked.connect(self._ms_macro_cancel_btn)
         
         # Auxillary signals wiring
         self.det_timer_start_sig.connect(self.det_upd_thread._start_timer)
@@ -240,7 +241,10 @@ class ContrastGUIMainWindow(QtWidgets.QDialog):
           self.ms_vert_axis_combo.setCurrentText(self.ms_settings.value('ms_vert_axis_combo'))
           self.ms_det_sel_combo.setCurrentText(self.ms_settings.value('ms_det_sel_combo'))
           self.ms_dwell_edit.setText(self.ms_settings.value('ms_dwell_edit'))
+          self.ms_fly_cb.setChecked(self.ms_settings.value('ms_fly_cb'))
           self.ms_keep_img_cb.setChecked(self.ms_settings.value('ms_keep_img_cb'))
+          self.ms_flytrig_axis_combo.setCurrentText(self.ms_settings.value('ms_flytrig_axis_combo'))
+          self.ms_flylatency_edit.setText(self.ms_settings.value('ms_flylatency_edit'))
           self._select_ms_fmot_combo()
           self._select_ms_smot_combo()
           self._select_ms_hor_axis()
@@ -283,7 +287,15 @@ class ContrastGUIMainWindow(QtWidgets.QDialog):
 
     def _populate_ms_det_combo(self):
         for name in self.available_detectors:
-            self.ms_det_sel_combo.addItem(name)       
+            self.ms_det_sel_combo.addItem(name)
+            
+    def _populate_ms_flytrig_axis_combo(self):
+        self.ms_flytrig_axis_combo.addItem('Horiz')
+        self.ms_flytrig_axis_combo.addItem('Vert')
+        self.ms_flytrig_axis_link = {
+          'Horiz' : 'X',  # Convert to names used by the PandaBox DS
+          'Vert'  : 'Y'
+        }      
     
     def _select_det_combo(self):
         self._current_det = self.det_combo.currentText()
@@ -465,7 +477,8 @@ class ContrastGUIMainWindow(QtWidgets.QDialog):
             env=self.env
           )
     
-    def _ms_macro_start_btn(self):
+    def _ms_get_edit_values(self):
+
         self._ms_current_fast_mot = self.ms_fast_mot_sel_combo.currentText()
         self._ms_current_slow_mot = self.ms_slow_mot_sel_combo.currentText()
         self._ms_current_fast_start = self.ms_fast_start_edit.text()
@@ -489,7 +502,11 @@ class ContrastGUIMainWindow(QtWidgets.QDialog):
             'detector' : self.available_detectors[self._ms_current_det],
             'dwell' : float(self._ms_current_dwell)
           }
+    
+    def _ms_macro_execute(self):
         
+        self._ms_get_edit_values()
+         
         ms_scan_params = [
             self.ms_macro_params['motor_slow'],
             self.ms_macro_params['start_slow'],
@@ -507,10 +524,38 @@ class ContrastGUIMainWindow(QtWidgets.QDialog):
             Macro=QMesh,
             env=self.env
           )
-    def _ms_macro_cancel_btn(self):
-        pass
-          
-    def _ls_macro_cancel_btn(self):
+    
+    def _ms_fly_macro_execute(self):
+      """Executes the STXM fly scan macro."""
+      
+      self._ms_get_edit_values()
+      ms_scan_params = [
+          self.ms_macro_params['motor_slow'],
+          self.ms_macro_params['start_slow'],
+          self.ms_macro_params['stop_slow'],
+          self.ms_macro_params['points_n_slow']-1,
+          self.ms_macro_params['motor_fast'],
+          self.ms_macro_params['start_fast'],
+          self.ms_macro_params['stop_fast'],
+          self.ms_macro_params['points_n_fast']-1,
+          self.ms_macro_params['dwell'],
+          float(self.ms_flylatency_edit.text()), # Fly scan latency
+          self.ms_flytrig_axis_link[self.ms_flytrig_axis_combo.currentText()] # Getting the current trigger axis
+        ]
+
+      self.run_macro(
+          ms_scan_params,
+          Macro=QMesh_fly,
+          env=self.env
+        )
+    
+    def _ms_macro_start_btn(self):
+        if self.ms_fly_cb.isChecked():
+          self._ms_fly_macro_execute()
+        else:
+          self._ms_macro_execute()
+       
+    def _macro_cancel_btn(self):
         logging.info(f"Emitting ls_macro_cancel_sig")
         self.ls_macro_cancel_sig.emit()
     
@@ -625,6 +670,8 @@ class ContrastGUIMainWindow(QtWidgets.QDialog):
             self.hist.setHistogramRange(min_val, max_val)
           else:
             pass
+        elif self.desc['scan'] == 'mesh_fly':
+          logging.info(f"{data['panda']['PMT']}")
 
     @pyqtSlot(RecorderFooter)
     def scan_finished(self, footer):
@@ -641,6 +688,7 @@ class ContrastGUIMainWindow(QtWidgets.QDialog):
         self.ls_settings.setValue('ls_points_n_edit', self.ls_points_n_edit.text())
         self.ls_settings.setValue('ls_dwell_edit', self.ls_dwell_edit.text())
         
+        self.ms_settings.setValue('ms_fly_cb', self.ms_fly_cb.isChecked())
         self.ms_settings.setValue('ms_keep_img_cb', self.ms_keep_img_cb.isChecked())
         
         self.ms_settings.setValue('ms_fast_mot_sel_combo', self.ms_fast_mot_sel_combo.currentText())
@@ -656,6 +704,8 @@ class ContrastGUIMainWindow(QtWidgets.QDialog):
         self.ms_settings.setValue('ms_vert_axis_combo', self.ms_vert_axis_combo.currentText())
         self.ms_settings.setValue('ms_det_sel_combo', self.ms_det_sel_combo.currentText())
         self.ms_settings.setValue('ms_dwell_edit', self.ms_dwell_edit.text())
+        self.ms_settings.setValue('ms_flytrig_axis_combo', self.ms_flytrig_axis_combo.currentText())
+        self.ms_settings.setValue('ms_flylatency_edit', self.ms_flylatency_edit.text())
         
 
 

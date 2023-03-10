@@ -4,6 +4,8 @@ import logging
 import numpy as np
 from collections import OrderedDict
 
+from tango import DeviceProxy
+
 from contrast.scans.Scan import SoftwareScan
 from contrast.detectors.Detector import Detector, DetectorGroup, TriggerSource
 from contrast.recorders import active_recorders, RecorderHeader, RecorderFooter
@@ -126,7 +128,7 @@ class QSoftwareScan(SoftwareScan, QObject):
                     dct[d.name] = d.read()
                 dct['dt'] = dt
                 
-                # send data as a signal
+                # send data as a signal for gui
                 self.scan_data.emit(dct)
                 
                 # pass data to recorders
@@ -310,4 +312,278 @@ class QMesh(QSoftwareScan):
 
         for i in range(len(grids[0].flat)):
             yield {m.name: pos.flat[i] for (m, pos) in zip(self.motors, grids)}
+            
+
+class QMesh_fly(QSoftwareScan):
+    """
+    Sample stxm for softimax.
+        
+    QMesh_fly <fast motor> <start> <stop> <intervals> <slow motor> <start> <stop> <intervals> <exp time> <latency> <trigger axis X or Y>
+
+    """
+
+    SLEEP = .01
+    PIEZO_SYNC_DELAY = 0.5 # delay in seconds to syncronize the piezo stage with the interferometer
+    MARGIN = 1.
+    PANDA = 'B318A-EA01/CTL/PandaPosTrig'
+    
+    progress = pyqtSignal(int)
+
+    def __init__(self, *args, env=None, **kwargs):
+        """
+        Parse and check arguments.
+        """
+        (self.slow_motor, self.slow_begin, self.slow_end, self.slow_ints,
+         self.fast_motor, self.fast_begin, self.fast_end, self.fast_ints,
+         self.exptime, self.latency, self.trigger_axis) = args
+        
+        #super(QMesh_fly, self).__init__(self.exptime, env=env)
+        QSoftwareScan.__init__(self, self.exptime, env=None, **kwargs)
+        self.env = env
+        
+        if len(args) < 10:
+            raise ValueError('Not enough parameters.')
+
+        # make sure the fast motor has a velocity or proxy.velocity attribute
+        ok = False
+        if hasattr(self.fast_motor, 'velocity'):
+            ok = True
+            self.proxy_attr = False
+        elif hasattr(self.fast_motor, 'proxy'):
+            if hasattr(self.fast_motor.proxy, 'Velocity'):
+                ok = True
+                self.proxy_attr = True
+        if not ok:
+            raise ValueError('Fast motor must have .velocity or .proxy.velocity attribute')
+
+        self.description = {
+                'scan' : 'mesh_fly',
+                'motors': [self.slow_motor.name, self.fast_motor.name],
+                'limits': [[float(self.slow_begin), float(self.slow_end)], [float(self.fast_begin), float(self.fast_end)]],
+                'points': [int(self.slow_ints)+1, int(self.fast_ints)+1],
+                'exposure': self.exptime
+            }
+        self.description = json.dumps(self.description)
+        
+        # The panda is a special device here, not just a detector.
+        if self.PANDA:
+            # real pandabox
+            self.panda = DeviceProxy(self.PANDA)
+            self.panda.DetPosCapt = False
+            self.panda.DetPosCapt = True
+            self.panda.ResetTrigCntr()
+            self.panda.ResetPointCntr()
+        else:
+            # dummy panda object
+            self.panda = DummyPanda()
+        
+        print('Trigger axis (should normally coincide with the fast scan axis) is: ', self.trigger_axis)
+
+        self._prepare_line_scan(self.fast_begin, self.fast_end, self.fast_ints+1, self.exptime, self.latency, self.trigger_axis)
+        
+
+    def run(self):
+        """
+        Run the actual scan. These little hooks can be included for full
+        compatibility with SoftwareScan (opening shutters, printing
+        progress, etc):
+
+            self._before_scan()
+            self._before_move()
+            self._before_arm()
+            self._before_start()
+            self._while_acquiring()
+            self._after_scan()
+        """
+
+        # Pre-scan stuff (incl snapshots and detector preparation)
+        self._before_scan()
+        self._setup()
+        print('\nScan #%d starting at %s' % (self.scannr, time.asctime()))
+
+        snap = self.env.snapshot.capture()
+        self.scan_started.emit(RecorderHeader(scannr=self.scannr,
+                                       status='started',
+                                       path=self.env.paths.directory,
+                                       snapshot=snap,
+                                       description=self.description))
+        
+        try:
+            slow_positions = np.linspace(
+                                 self.slow_begin, self.slow_end, self.slow_ints+1
+                             )
+            for y_i, y_val in enumerate(slow_positions):
+                QCoreApplication.processEvents()
+                # enable position capturing
+                self.panda.DetPosCapt = True
+                
+                # move to the next line
+                self._before_move()
+                self.slow_motor.move(y_val)
+                while self.slow_motor.busy():
+                    time.sleep(.01)
+
+                # arm detectors (like triggered ones)
+                self._before_arm()
+                self.group.arm()
+
+                # start detectors (like not triggered ones)
+                self._before_start()
+                self.group.start(trials=10)
+
+                # run the stxm line
+                self._do_line(self.fast_begin, self.fast_end)
+
+                while (self.panda.PointNOut is None
+                       or (len(self.panda.PointNOut) < self.fast_ints+1)
+                       or self.fast_motor.busy()
+                       or self.group.busy()):
+                    self._while_acquiring()
+                    time.sleep(.01)
+
+                # disable position capturing to clean the data buffer
+                self.panda.DetPosCapt = False
+                # read detectors and panda
+                dt = time.time() - self.t0
+                dct = OrderedDict()
+                for d in self.group:
+                    dct[d.name] = d.read()
+                dct['dt'] = dt
+                # weird that this [:N] indexing is needed, something wrong with panda scheme?
+                dct['panda'] = {'x': self.panda.XPosOut,
+                                'y': self.panda.YPosOut,
+                                'PMT': self.panda.PMTOut,
+                                'diode': self.panda.PDiodeOut}
+                print(f'XPosOut length is: {len(self.panda.XPosOut)}')
+
+                # pass data to recorders
+                for r in active_recorders():
+                    r.queue.put(dct)
+                    
+                # emit data for the gui part
+                self.scan_data.emit(dct)
+
+                # print spec-style info
+                self.output(y_i, dct.copy())
+
+                if self._macro_cancel:
+                    self.group.stop()
+                    print('\nScan #%d cancelled at %s' % (self.scannr, time.asctime()))
+
+                    # emit the qt finished signal
+                    self.scan_finished.emit(RecorderFooter(scannr=self.scannr,
+                                                status='interrupted',
+                                                path=self.env.paths.directory,
+                                                snapshot=snap,
+                                                description=self.description))
+
+                    # tell the recorders that the scan was interrupted
+                    for r in active_recorders():
+                        r.queue.put(RecorderFooter(scannr=self.scannr,
+                                                status='interrupted',
+                                                path=self.env.paths.directory,
+                                                snapshot=snap,
+                                                description=self.description))
+
+                    self.scan_finished.emit(RecorderFooter(scannr=self.scannr,
+                                           status='interrupted',
+                                           path=self.env.paths.directory,
+                                           snapshot=snap,
+                                           description=self.description))
+                        
+                    break
+
+            print('\nScan #%d ending at %s' % (self.scannr, time.asctime()))
+            self.scan_finished.emit(RecorderFooter(scannr=self.scannr,
+                                           status='finished',
+                                           path=self.env.paths.directory,
+                                           snapshot=snap,
+                                           description=self.description))
+
+        except KeyboardInterrupt:
+            for r in active_recorders():
+                r.queue.put(RecorderFooter(scannr=self.scannr,
+                                           status='cancelled',
+                                           path=self.env.paths.directory))
+            return
+
+        for r in active_recorders():
+            r.queue.put(RecorderFooter(scannr=self.scannr,
+                                       status='finished',
+                                       path=self.env.paths.directory))
+
+    def _setup(self):
+        # find and prepare the detectors
+        self.group = Detector.get_active()
+        self.group.prepare(self.exposuretime, self.scannr, self.slow_ints + 1, trials=10)
+        self.t0 = time.time()
+        # send a header to the recorders
+        snap = self.env.snapshot.capture()
+        for r in active_recorders():
+            r.queue.put(RecorderHeader(scannr=self.scannr, 
+                                       status='started',
+                                       path=self.env.paths.directory,
+                                       snapshot=snap, 
+                                       description=self._command))
+
+    def _set_vel(self, vel):
+        if self.proxy_attr:
+            self.fast_motor.proxy.Velocity = vel
+        else:
+            self.fast_motor.velocity = vel
+
+    def _prepare_line_scan(self, start, end, N_points, exptime, latency, trigger_axis):
+        """Prepares panda for the line acquisition"""
+
+        self.panda.TrigAxis = trigger_axis # triger axis X or Y for horizontal and vertical respectively
+        print(f'preparing line scan, moving the fast motor to {start}')
+        if trigger_axis == 'X':
+            self.fast_motor.move(start)
+            time.sleep(self.PIEZO_SYNC_DELAY)
+            self.panda.TrigXPos = self.panda.AbsX # position in microns
+        elif trigger_axis == 'Y':
+            self.fast_motor.move(start)
+            time.sleep(self.PIEZO_SYNC_DELAY)
+            self.panda.TrigYPos = self.panda.AbsY
+        else:
+            raise ValueError('The triggered axis name should be either X or Y.')
+        
+        self.panda.ResetPointCntr()
+        self.panda.DetTimePulseStep = exptime + latency
+        self.panda.DetTimePulseWidth = exptime
+        self.panda.DetTimePulseN = N_points
+        self.panda.TimePulsesEnable = True
+
+        # setting up trigger axis motor velocity
+        vel = (abs(start - end)) / (N_points * (exptime + latency) * 1e-3)
+        self._set_vel(vel)
+
+    def _do_line(self, start, end):
+        """Arms panda before each new line and moves the fast motor"""
+        
+        # go to the starting position
+        self.fast_motor.move(start - self.MARGIN)
+        # arm panda for a single line acquisition
+        self.panda.ArmSingle()
+        while self.fast_motor.busy():
+            time.sleep(self.SLEEP)
+
+        # do a controlled movement
+        self.fast_motor.move(end)
+
+    def _while_acquiring(self):
+        print('%s: %.1f, point#: %i  \r' % (self.fast_motor.name, self.fast_motor.user_position, self.panda.DetPointCntr), end=' ')
+        
+class DummyPanda(object):
+    
+    dum = np.arange(10000, dtype=np.uint8)
+    PointNOut = dum
+    XPosOut = dum
+    YPosOut = dum
+    PMTOut = dum
+    PDiodeOut = dum
+
+    def ArmSingle(self):
+        pass
+
 
